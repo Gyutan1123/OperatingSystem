@@ -3,7 +3,8 @@
 #define KEY_UP_BIT 0x80
 #define SCREEN_WIDTH 320
 #define SCREEN_HEIGHT 200
-#define DEADLINE 300
+#define RACKETX 300
+#define RACKET_WIDTH 40
 
 static int kbd_handler(void);
 static int timer_handler(void);
@@ -16,19 +17,18 @@ static int cli(void);
 
 static int moveball(void);
 static int resetball(void);
+
 char* pptr;
 char* bptr;
-
 typedef struct {
-    char x;
-    char y;
-    char vx;
-    char vy;
+    int x;
+    int y;
+    int vx;
+    int vy;
 } BALL;
 
 BALL* pball;
-char* score;
-
+char* pscore;
 // Windows (MinGW) の場合、ここでの変数の初期化は効かない
 
 // 先頭は main 関数でなければならない
@@ -43,24 +43,21 @@ int main(void) {
     *ptr = (int)kbd_handler;
     *(ptr + 1) = (int)timer_handler;
 
-    pptr = (char*)(0xa0000 + SCREEN_WIDTH - 10);
+    pptr = (char*)(0xa0000 + RACKETX);
     bptr = (char*)(0xa0000 + SCREEN_WIDTH * 80);
+
+    BALL ball = {0.0, 0.0, 0.0, 0.0};
+    pball = &ball;
+    resetball();
 
     *bptr = 14;
     *pptr = 15;
-    syscall(1, 0);
-    BALL ball = {0, 0, 0, 0};
-    syscall(1, 1);
-    pball = &ball;
-    syscall(1, 2);
 
-    resetball();
-    syscall(1, 3);
-
-    *score = 0;
+    char score = 0;
+    pscore = &score;
 
     // 現状では何もおこらないが、取りあえずソフトウェア割り込みをかけてみる
-    syscall(1, 4);
+    syscall(1, *pscore);
 
     while (1) halt();
 }
@@ -81,30 +78,60 @@ static int moveball(void) {
         pball->vy = -pball->vy;
     }
 
+    // ラケットとの衝突
+    int rackety = (int)(pptr - 0xa0000) / SCREEN_WIDTH;
+    if (pball->x < RACKETX && pball->x + pball->vx >= RACKETX &&
+        (pball->y + pball->vy >= rackety - 1) &&
+        (pball->y + pball->vy <= rackety + RACKET_WIDTH + 1)) {
+        pball->vx = -pball->vx;
+
+        // 連続で返すとレベルアップ
+        *pscore = (*pscore + 1);
+        if (*pscore >= 3) {
+            resetball();
+            pball->vx += 1;
+            *pscore = 0;
+        }
+    }
+
     // 失敗
-    if (pball->x + pball->vx >= DEADLINE) {
-        score = 0;
+    if (pball->x + pball->vx >= SCREEN_WIDTH) {
+        *pscore = 0;
         resetball();
     }
 
     pball->x += pball->vx;
     pball->y += pball->vy;
+
+    syscall(1, *pscore);
 }
 
 static int kbd_handler(void) {
     out8(0x20, 0x61);  // キーボード割り込み (IRQ1) を再度有効にする
     int key = in8(KBD_DATA);
-
+    int i;
     // ラケットを消去
-    *pptr = 0;
+    for (i = 0; i < RACKET_WIDTH; i++) {
+        *(pptr + i * SCREEN_WIDTH) = 0;
+    }
 
     // ラケットの位置を変更
-    pptr += SCREEN_WIDTH;
-    if (pptr > ((char*)0xa0000) + SCREEN_WIDTH * 80)
-        pptr = ((char*)0xa0000) + SCREEN_WIDTH - 10;
+    // Sで下
+    if (((key & 0x7f) == 0x1f) &&
+        pptr <
+            (char*)(0xa0000 + SCREEN_WIDTH * (SCREEN_HEIGHT - RACKET_WIDTH))) {
+        pptr += 5 * SCREEN_WIDTH;
+    }
+
+    // Wで上
+    if (((key & 0x7f) == 0x11) && pptr > ((char*)(0xa0000 + SCREEN_WIDTH))) {
+        pptr -= 5 * SCREEN_WIDTH;
+    }
 
     // ラケットを描画
-    *pptr = 15;
+    for (i = 0; i < RACKET_WIDTH; i++) {
+        *(pptr + i * SCREEN_WIDTH) = 15;
+    }
 }
 
 static int timer_handler(void) {
@@ -116,6 +143,7 @@ static int timer_handler(void) {
     // ボールの位置を変更
     moveball();
     bptr = (char*)(0xa0000 + pball->x + SCREEN_WIDTH * pball->y);
+
     // ボールを描画
     *bptr = 15;
 }

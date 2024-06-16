@@ -47,6 +47,38 @@ void boot(void) {
         src++;
     }
 
+    read_a_sector(0, 1, 17);
+    src = (char*)0x80000;
+    for (i = 0; i < 512; i++) {
+        *dst = *src;
+        dst++;
+        src++;
+    }
+
+    read_a_sector(1, 1, 1);
+    src = (char*)0x80000;
+    for (i = 0; i < 512; i++) {
+        *dst = *src;
+        dst++;
+        src++;
+    }
+
+    read_a_sector(1, 1, 2);
+    src = (char*)0x80000;
+    for (i = 0; i < 512; i++) {
+        *dst = *src;
+        dst++;
+        src++;
+    }
+
+    read_a_sector(1, 1, 3);
+    src = (char*)0x80000;
+    for (i = 0; i < 512; i++) {
+        *dst = *src;
+        dst++;
+        src++;
+    }
+
     void (*fptr)();
     fptr = (void (*)())0x10000;
     (*fptr)();
@@ -81,7 +113,7 @@ static int syscall_handler(int* regs) {
     int a = regs[0];
     int b = regs[1];
     if (a == 1) {
-        print(b, 0, 0, 0);
+        print(b, 0, 0, 15);
     }
 
     return 0;
